@@ -1,0 +1,81 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <signal.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <time.h>
+#include <unistd.h>
+#include <string.h>
+#include <sys/wait.h>
+#include <sys/time.h>
+
+#define MAX_BUFFER 30
+
+int flag = 0;
+
+void signal_handler(int signum)
+{
+    flag = 1;
+}
+
+int main()
+{
+    signal(SIGINT, signal_handler);
+    time_t current_time;
+    srand((unsigned)time(&current_time));
+    int pipe_parent_to_child[2];
+    int pipe_child_to_parent[2];
+    int random_number;
+    pipe(pipe_parent_to_child);
+    pipe(pipe_child_to_parent);
+    int child_pid;
+    int num_bytes;
+    char read_buffer[MAX_BUFFER];
+
+    child_pid = fork();
+
+    while (1)
+    {
+        sleep(3);
+        printf("Waiting...\n");
+        if (flag)
+        {
+            flag = 0;
+            if (child_pid == 0) // Child process
+            {
+                for (int i = 0; i < 10; i++)
+                {
+                    close(pipe_parent_to_child[1]);
+                    num_bytes = read(pipe_parent_to_child[0], read_buffer, sizeof(read_buffer));
+                    printf("Child: received > %s\n", read_buffer);
+                    random_number = atoi(read_buffer);
+                    random_number += 3;
+                    sprintf(read_buffer, "%d", random_number);
+                    close(pipe_child_to_parent[0]);
+                    write(pipe_child_to_parent[1], read_buffer, strlen(read_buffer) + 1);
+                }
+                exit(1);
+            }
+            else
+            {
+                for (int i = 0; i < 10; i++)
+                {
+                    random_number = rand() % 100 + 1;
+                    char message[MAX_BUFFER];
+                    printf("Parent: generated and sent > %d\n", random_number);
+                    sprintf(message, "%d", random_number);
+                    close(pipe_parent_to_child[0]);
+                    write(pipe_parent_to_child[1], message, strlen(message) + 1);
+                    close(pipe_child_to_parent[1]);
+                    num_bytes = read(pipe_child_to_parent[0], message, sizeof(message));
+                    printf("Parent: received from Child > %s\n", message);
+                    random_number = atoi(message);
+                    random_number += 7;
+                    printf("Final value is > %d\n\n", random_number);
+                }
+                exit(1);
+            }
+        }
+    }
+}
